@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
+import concurrent.futures
 import functools
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor
 from http.client import HTTPConnection
 
 import requests
@@ -17,15 +17,16 @@ requests_log.propagate = True
 
 CACHE_FOLDER = 'page_caches/'
 IMG_FOLDER = 'fruit_images/'
-EXECUTOR = ThreadPoolExecutor(max_workers=5)
+EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+FUTURES = []
 PAGE_COUNT = 380
 
 
 def parse_page(page):
-    logging.info('request page %s', page)
+    logging.info('[page %s] start parse page', page)
     cache_file = os.path.join(CACHE_FOLDER, f'page-{page}.html')
     if os.path.exists(cache_file):
-        logging.debug('cache hit')
+        logging.debug('[page %s] cache hit', page)
         with open(cache_file) as _file:
             page_html = _file.read()
     else:
@@ -48,8 +49,8 @@ def parse_page(page):
         thumb_pic_src = div.select_one('div.thumb-frame>a>img')['src']
         id = (page) * 20 + div_idx + 1
         info = FruitInfo(id, artist, year, scientific_name, common_name, thumb_pic_src)
-        logging.info(info)
-        EXECUTOR.submit(info.download_and_save)
+        logging.info('[page %s] %s', page, info)
+        FUTURES.append(EXECUTOR.submit(info.download_and_save))
 
 
 class FruitInfo:
@@ -87,7 +88,11 @@ class FruitInfo:
 
 def main():
     for i in range(PAGE_COUNT):
-        EXECUTOR.submit(parse_page, i + 1)
+        parse_page(i + 1)
+        concurrent.futures.wait(FUTURES)
+        for index, future in enumerate(FUTURES):
+            if future.done():
+                FUTURES.pop(index)
 
 
 if __name__ == '__main__':
